@@ -1,0 +1,159 @@
+---
+title: "Rotation_task_1"
+author: "Anastasia Leshchyk"
+date: "April 15, 2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(Rtsne)
+library(ggplot2)
+library(umap)
+library(Rtsne)
+```
+
+## Data loading
+```{r, include=FALSE}
+# readign the data
+data<- read.csv(url("http://users.wenglab.org/moorej3/Yu-Project/Mouse-Enhancer-Matrix.txt"), sep = "\t")
+# removing the missing data
+data<- na.omit(data)
+# creating index 
+rownames(data)<-data$ccres 
+data<- as.matrix(within(data, rm(ccres)))
+# preventing NAs during the future data transformations
+data<- data+100
+```
+
+## Data normalization
+
+```{r, include=FALSE}
+
+# log normalization
+log_data<- log2(data)
+# scale per column
+X <- normalize_input(as.matrix(log_data))
+
+# creating annotation vectors
+colnames(X)<- colnames(data)
+cols<-strsplit(as.vector(colnames(X)), "_")
+
+time_points <- unlist(
+  lapply(
+    X = cols,
+    FUN = function(n) {
+     
+      paste(tail(n, 2), collapse = '_')
+    }
+  ))
+tissue_types<- unlist(
+  lapply(
+    X = cols,
+    FUN = function(n) {
+     
+      paste(head(n, -2), collapse = '_')
+    }
+  ))
+
+tissue_types_short<- (
+  lapply(
+    X = cols,
+    FUN = function(n) {
+     tail(head(head(n, -2), -1), -1)
+    }
+  ))
+
+tissue_types_short<- unlist(
+  lapply(
+    X = tissue_types_short,
+    FUN = function(n) {
+     if (length(n)>1){
+    paste(n, collapse = "_")
+     }
+      else{
+        n
+      }
+    }
+  ))
+
+tissue_stage<- unlist(
+  lapply(
+    X = cols,
+    FUN = function(n) {
+      paste(tail(head(n, -2), 1), collapse = '_')
+    }
+  ))
+
+# transform the data matrix
+Xt<- t(X)
+```
+
+## PCA
+```{r}
+# appplying PCA
+set.seed(42)
+pca<-prcomp(Xt)
+pca_out <- as.data.frame(pca$x)
+pca_out$tissue<- tissue_types_short
+pca_out$time<- time_points
+pca_out$tissue_growth<-tissue_stage
+
+
+p<-ggplot(pca_out,aes(x=PC1,y=PC2,color=tissue, group=time_points, shape=time_points))+theme() + geom_point()+scale_shape_manual(values = rep(15:17, len = 7),
+                       guide = guide_legend(nrow = 4))+guides(col = guide_legend(nrow = 8))+ggtitle("H3K27ac signals at distal enhancers PCA projection")
+p
+
+p<-ggplot(pca_out,aes(x=PC1,y=PC2,color=tissue_growth, group=time_points, shape=time_points))+theme() + geom_point()+scale_shape_manual(values = rep(15:17, len = 7),
+                       guide = guide_legend(nrow = 4))+guides(col = guide_legend(nrow = 8))+ggtitle("H3K27ac signals at distal enhancers PCA projection")
+p
+
+```
+
+## t-SNE
+```{r}
+# applying t-SNE
+set.seed(42)
+perplexity <- floor(nrow(Xt)/5)
+tsne_out <- Rtsne(Xt, pca=FALSE,perplexity=5,theta=0.0)
+
+tsne_plot <- data.frame(x = tsne_out$Y[,1], y = tsne_out$Y[,2])
+
+tsne_plot$tissue<- tissue_types_short
+tsne_plot$time<- time_points
+tsne_plot$tissue_growth<-tissue_stage
+
+
+p<-ggplot(tsne_plot,aes(x=x,y=y,color=tissue, group=time_points, shape=time_points))+theme() + geom_point()+scale_shape_manual(values = rep(15:17, len = 7),
+                       guide = guide_legend(nrow = 4))+guides(col = guide_legend(nrow = 8))+xlab("t-SNE1")+ylab("t-SNE2")+ggtitle("H3K27ac signals at distal enhancers t-SNE projection")
+p
+
+p<-ggplot(tsne_plot,aes(x=x,y=y,color=tissue_growth, group=time_points, shape=time_points))+theme() + geom_point()+scale_shape_manual(values = rep(15:17, len = 7),
+                       guide = guide_legend(nrow = 4))+guides(col = guide_legend(nrow = 8))+xlab("t-SNE1")+ylab("t-SNE2")+ggtitle("H3K27ac signals at distal enhancers t-SNE projection")
+p
+
+```
+
+# UMAP
+```{r}
+# applying UMAP
+set.seed(42)
+# setting the custom parameters for better cluster separation
+custom.settings = umap.defaults
+custom.settings$n_neighbors = 10
+custom.settings$min_dist = 0.30
+
+
+umap_out<- umap(as.data.frame(Xt), config = custom.settings)
+umap_out <- data.frame(x = umap_out$layout[,1], y = umap_out$layout[,2],
+                  tissue= tissue_types_short, time=time_points, tissue_growth=tissue_stage)
+
+
+p<-ggplot(umap_out,aes(x=x,y=y,color=tissue, group=time_points, shape=time_points))+theme() + geom_point()+scale_shape_manual(values = rep(15:17, len = 7),
+                       guide = guide_legend(nrow = 4))+guides(col = guide_legend(nrow = 8))+ggtitle("H3K27ac signals at distal enhancers UMAP projection")
+p
+
+p<-ggplot(umap_out,aes(x=x,y=y,color=tissue_stage, group=time_points, shape=time_points))+theme() + geom_point()+scale_shape_manual(values = rep(15:17, len = 7),
+                       guide = guide_legend(nrow = 4))+guides(col = guide_legend(nrow = 8))+ggtitle("H3K27ac signals at distal enhancers UMAP projection")
+p
+```
